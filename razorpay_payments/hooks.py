@@ -242,3 +242,8 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+doc_events = {
+    "Sales Invoice": {
+        "on_submit": "razorpay_payments.razorpay_payments.api.send_payment_link_on_invoice_submit"
+    },
+}
