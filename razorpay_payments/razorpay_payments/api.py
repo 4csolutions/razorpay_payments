@@ -11,10 +11,12 @@ def send_payment_link_on_invoice_submit(doc, method):
     email = customer.email_id
     phone = customer.mobile_no
 
+    # ✅ Custom mobile number logic
+    invoice_phone = doc.custom_payment_mobile_number or phone
+
     settings = frappe.get_single("Razorpay Settings")
     api_key = settings.api_key
-    docSettings = frappe.get_single("Razorpay Settings")
-    api_secret = docSettings.get_password('api_secret')
+    api_secret = settings.get_password('api_secret')
 
     url = "https://api.razorpay.com/v1/payment_links"
 
@@ -26,7 +28,7 @@ def send_payment_link_on_invoice_submit(doc, method):
         "description": f"Invoice {doc.name}",
         "customer": {
             "name": customer.customer_name,
-            "contact": phone or "",
+            "contact": invoice_phone or "",
             "email": email or ""
         },
         "notify": {
@@ -44,20 +46,19 @@ def send_payment_link_on_invoice_submit(doc, method):
         'Content-Type': 'application/json',
         'Authorization': f'Basic {token}'
     }
-    print(f"customer: {customer}\nemail: {email}\nphone: {phone}\nsettings: {settings}\napi_key: {api_key}\napi_secret: {api_secret}\nurl: {url}\npayload: {payload}\nheaders: {headers}\n")
+
     try:
         response = requests.post(url, headers=headers, data=json.dumps(payload))
-        print(response.status_code)
         if response.status_code == 200:
             link = response.json()
             frappe.db.set_value("Sales Invoice", doc.name, "custom_razorpay_payment_link_id", link.get("id"))
             frappe.db.set_value("Sales Invoice", doc.name, "custom_razorpay_payment_link_url", link.get("short_url"))
-            frappe.msgprint("✅ Payment link created and sent.", alert=True)
+            frappe.msgprint(f"✅ Payment link sent to: {invoice_phone}", alert=True)
         else:
             frappe.log_error(f"Razorpay error: {response.text}", "Payment Link Creation")
     except Exception as e:
         frappe.log_error(f"Razorpay error: {e}", "Payment Link Creation")
-        return
+
 
 # # your_app/api.py
 # @frappe.whitelist(allow_guest=True)
