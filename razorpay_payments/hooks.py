@@ -251,3 +251,17 @@ doc_events = {
 doctype_js = {
     "Sales Invoice": "public/js/sales_invoice.js"
 }
+
+
+fixtures = [
+    {
+        "dt": "Custom Field",
+        "filters": [
+            ["name", "in", [
+                "Sales Invoice-custom_razorpay_payment_link_id",
+                "Sales Invoice-custom_razorpay_payment_link_url",
+                "Sales Invoice-custom_payment_mobile_number"
+            ]]
+        ]
+    }
+]
