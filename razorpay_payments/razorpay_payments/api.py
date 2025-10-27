@@ -90,6 +90,7 @@ import frappe, json, hmac, hashlib
 
 @frappe.whitelist(allow_guest=True)
 def razorpay_webhook():
+    frappe.log_error("Webhook Called")
     try:
         data = frappe.request.data
         payload = json.loads(data.decode("utf-8"))
@@ -102,6 +103,8 @@ def razorpay_webhook():
         generated_sig = hmac.new(
             webhook_secret.encode(), data, hashlib.sha256
         ).hexdigest()
+
+        frappe.log_error(data, payload, signature, generated_sig)
 
         if signature != generated_sig:
             frappe.log_error("Invalid webhook signature", "Razorpay Webhook")
