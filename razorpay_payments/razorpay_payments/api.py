@@ -60,87 +60,110 @@ def send_payment_link_on_invoice_submit(doc, method):
         frappe.log_error(f"Razorpay error: {e}", "Payment Link Creation")
 
 
-# # your_app/api.py
-# @frappe.whitelist(allow_guest=True)
-# def razorpay_webhook():
-#     raw_body = frappe.request.get_data(as_text=True)
-#     signature = frappe.get_request_header("X-Razorpay-Signature")
-#     if not signature:
-#         frappe.local.response["http_status_code"] = 400
-#         return "Missing signature"
 
-#     # settings = frappe.get_single("Razorpay Settings")
-#     # webhook_secret = settings.webhook_secret  # Add this Password field in your Settings
-#     webhook_secret = "pass@1234"
+@frappe.whitelist()
+def resend_payment_link(invoice_name, via="sms"):
+    invoice = frappe.get_doc("Sales Invoice", invoice_name)
+    link_id = invoice.custom_razorpay_payment_link_id
 
-#     expected = hmac.new(
-#         webhook_secret.encode("utf-8"),
-#         raw_body.encode("utf-8"),
-#         hashlib.sha256
-#     ).hexdigest()
+    if not link_id:
+        frappe.throw("No Payment Link ID found. Create link first.")
 
-#     if not hmac.compare_digest(expected, signature):
-#         frappe.local.response["http_status_code"] = 400
-#         return "Invalid signature"
+    settings = frappe.get_single("Razorpay Settings")
+    api_key = settings.api_key
+    api_secret = settings.get_password("api_secret")
 
-#     payload = json.loads(raw_body)
-#     event = payload.get("event")
+    token = base64.b64encode(f"{api_key}:{api_secret}".encode()).decode("utf-8")
+    url = f"https://api.razorpay.com/v1/payment_links/{link_id}/notify_by/{via}"
+    headers = {"Authorization": f"Basic {token}", "Content-Type": "application/json"}
 
-#     if event not in ("payment_link.paid", "payment_link.partially_paid"):
-#         return "Ignored"
+    response = requests.post(url, headers=headers)
 
-#     # Extract reference_id and paid amount (paise) from payment_link entity
-#     pl_entity = payload.get("payload", {}).get("payment_link", {}).get("entity", {}) or {}
-#     reference_id = pl_entity.get("reference_id")
-#     payment_link_id = pl_entity.get("id")
-#     amount_paid = (pl_entity.get("amount_paid") or 0) / 100.0
+    if response.status_code == 200:
+        frappe.msgprint("✅ Payment link resent via SMS")
+    else:
+        frappe.log_error(f"{response.text}", "Razorpay Resend Error")
+        frappe.throw("Failed to resend payment link. Check logs.")
 
-#     # Payment id if available
-#     payment = payload.get("payload", {}).get("payment", {}) or {}
-#     payment_id = (payment.get("entity") or {}).get("id")
 
-#     if not reference_id:
-#         frappe.log_error(f"No reference_id in webhook for link {payment_link_id}", "Razorpay Webhook")
-#         return "No reference_id"
+import frappe, json, hmac, hashlib
 
-#     # Load Sales Invoice by name (you set reference_id=doc.name while creating link)
-#     inv = frappe.get_doc("Sales Invoice", reference_id)
-#     if inv.docstatus != 1:
-#         return "Invoice not submitted"
+@frappe.whitelist(allow_guest=True)
+def razorpay_webhook():
+    try:
+        data = frappe.request.data
+        payload = json.loads(data.decode("utf-8"))
 
-#     # Create Payment Entry for the paid amount (cap to outstanding)
-#     alloc = min(amount_paid, float(inv.outstanding_amount))
-#     if alloc <= 0:
-#         return "Nothing to allocate"
+        signature = frappe.get_request_header("X-Razorpay-Signature")
+        # webhook_secret = frappe.db.get_single_value("Razorpay Settings", "webhook_secret")
+        webhook_secret = "Pass@1234"
 
-#     company = inv.company
-#     receivable = frappe.get_cached_value("Company", company, "default_receivable_account")
-#     bank_account = frappe.db.get_value("Bank Account", {"company": company, "is_default": 1}, "account")
-#     if not receivable or not bank_account:
-#         frappe.log_error("Missing default accounts for Payment Entry", "Razorpay Webhook")
-#         return "Missing accounts"
+        # ✅ Verify Razorpay signature
+        generated_sig = hmac.new(
+            webhook_secret.encode(), data, hashlib.sha256
+        ).hexdigest()
 
-#     pe = frappe.get_doc({
-#         "doctype": "Payment Entry",
-#         "payment_type": "Receive",
-#         "party_type": "Customer",
-#         "party": inv.customer,
-#         "company": company,
-#         "paid_from": receivable,
-#         "paid_to": bank_account,
-#         "paid_amount": alloc,
-#         "received_amount": alloc,
-#         "mode_of_payment": "Razorpay",
-#         "reference_no": payment_id or payment_link_id,
-#         "reference_date": frappe.utils.today(),
-#         "references": [{
-#             "reference_doctype": "Sales Invoice",
-#             "reference_name": inv.name,
-#             "allocated_amount": alloc
-#         }]
-#     })
-#     pe.insert(ignore_permissions=True)
-#     pe.submit()
+        if signature != generated_sig:
+            frappe.log_error("Invalid webhook signature", "Razorpay Webhook")
+            return "Invalid signature"
 
-#     inv.add_comment("Comment", f"Payment via Razorpay link {payment_link_id}, payment_id: {payment_id}, amount: {alloc}")
-#     return "ok"
+        event_type = payload.get("event")
+        frappe.log_error(payload, "Webhook Received ✅")
+
+        if event_type not in ["payment_link.paid", "payment.captured"]:
+            return "Event not handled"
+
+        payment_data = payload.get("payload", {})
+        payment = (payment_data.get("payment", {}) or {}).get("entity", {})
+        payment_link = (payment_data.get("payment_link", {}) or {}).get("entity", {})
+
+        notes = payment.get("notes") or payment_link.get("notes")
+        invoice_name = notes.get("invoice_name")
+
+        if not invoice_name:
+            frappe.log_error("Invoice name missing", "Webhook Error")
+            return "Invoice name not found"
+
+        amount_paid = int(payment.get("amount", 0)) / 100
+        txn_id = payment.get("id")
+
+        # ✅ Prevent duplicate Payment Entry
+        if frappe.db.exists("Payment Entry", {"reference_no": txn_id}):
+            frappe.log_error("Duplicate payment ignored", "Webhook Info")
+            return "Payment Already Recorded"
+
+        invoice = frappe.get_doc("Sales Invoice", invoice_name)
+
+        payment_entry = frappe.get_doc({
+            "doctype": "Payment Entry",
+            "payment_type": "Receive",
+            "company": invoice.company,
+            "party_type": "Customer",
+            "party": invoice.customer,
+            "posting_date": frappe.utils.nowdate(),
+            "mode_of_payment": "Razorpay",
+            "reference_no": txn_id,
+            "reference_date": frappe.utils.nowdate(),
+            "paid_amount": amount_paid,
+            "received_amount": amount_paid,
+            "references": [{
+                "reference_doctype": "Sales Invoice",
+                "reference_name": invoice_name,
+                "allocated_amount": amount_paid
+            }]
+        })
+
+        payment_entry.insert(ignore_permissions=True)
+        payment_entry.submit()
+
+        frappe.db.commit()  # ✅ VERY IMPORTANT for webhook jobs
+
+        frappe.log_error(f"Payment Entry Created: {payment_entry.name}", "Webhook Success ✅")
+
+        return "OK"
+    
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(str(e), "Webhook Failed ❌")
+        return "Failed"
+

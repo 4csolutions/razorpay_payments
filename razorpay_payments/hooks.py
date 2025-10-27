@@ -247,3 +247,7 @@ doc_events = {
         "on_submit": "razorpay_payments.razorpay_payments.api.send_payment_link_on_invoice_submit"
     },
 }
+
+doctype_js = {
+    "Sales Invoice": "public/js/sales_invoice.js"
+}
