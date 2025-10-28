@@ -265,3 +265,11 @@ fixtures = [
         ]
     }
 ]
+
+
+app_name = "razorpay_payments"
+app_title = "Razorpay Payments"
+# app_version = "0.0.1"
+
+# Auto-run setup during installation
+after_migrate = ["razorpay_payments.razorpay_payments.setup.setup_razorpay"]
