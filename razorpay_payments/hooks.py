@@ -273,3 +273,4 @@ app_title = "Razorpay Payments"
 
 # Auto-run setup during installation
 after_migrate = ["razorpay_payments.razorpay_payments.setup.setup_razorpay"]
+after_install = ["razorpay_payments.razorpay_payments.setup.setup_razorpay"]
