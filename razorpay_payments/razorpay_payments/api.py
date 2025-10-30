@@ -19,7 +19,7 @@ def get_razorpay_headers():
 # Secure fetch for webhook secret
 def get_webhook_secret():
     settings = frappe.get_single("Razorpay Settings")
-    return settings.webhook_secret or frappe.conf.get("RAZORPAY_WEBHOOK_SECRET")
+    return settings.get_password("webhook_secret")
 
 # Unified error logger
 def log_error(title, message):
@@ -27,6 +27,10 @@ def log_error(title, message):
 
 @frappe.whitelist()
 def send_payment_link_on_invoice_submit(doc, method):
+    settings = frappe.get_single("Razorpay Settings")
+    if not settings.enable_payment_link:
+        return 
+    
     customer = frappe.get_doc("Customer", doc.customer)
     email = customer.email_id
     phone = customer.mobile_no
@@ -60,8 +64,11 @@ def send_payment_link_on_invoice_submit(doc, method):
             response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=8)
             if response.status_code == 200:
                 link = response.json()
-                frappe.db.set_value("Sales Invoice", doc.name, "custom_razorpay_payment_link_id", link.get("id"))
-                frappe.db.set_value("Sales Invoice", doc.name, "custom_razorpay_payment_link_url", link.get("short_url"))
+                frappe.db.set_value("Sales Invoice", doc.name, {
+                    "custom_razorpay_payment_link_id": link.get("id"),
+                    "custom_razorpay_payment_link_url": link.get("short_url")
+                    }, update_modified=False)
+
                 frappe.msgprint(f"✅ Payment link sent to: {invoice_phone}", alert=True)
                 return
             else:
@@ -102,8 +109,8 @@ def razorpay_webhook():
         payload = json.loads(data.decode("utf-8"))
 
         signature = frappe.get_request_header("X-Razorpay-Signature")
-        # webhook_secret = get_webhook_secret()
-        webhook_secret = "Pass@1234"
+        webhook_secret = get_webhook_secret()
+        # webhook_secret = "Pass@1234"
         if not webhook_secret:
             log_error("Webhook Setup Error", "Webhook secret missing in config.")
             return "Webhook secret not found"
