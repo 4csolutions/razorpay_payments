@@ -139,8 +139,8 @@ def razorpay_webhook():
 
         payment_data = payload.get("payload", {})
         payment = payment_data.get("payment", {})
-        payment_link = payment_data.get("payment_link", {}) or {}
-        invoice_name = payment_link.get("reference_id")
+        payment_link = payment_data.get("payment_link", {})
+        invoice_name = payment_link.get("entity", {}).get("reference_id")
         if not invoice_name:
             frappe.log_error("Webhook Missing Data", "Invoice name missing in notes.")
             return "Invoice name not found"
@@ -171,6 +171,7 @@ def razorpay_webhook():
 def create_payment_entry(invoice_name, amount_paid, txn_id):
     """Background job to create payment entry with proper permissions"""
     try:
+        frappe.set_user("Administrator")
         if frappe.db.exists("Payment Entry", {"reference_no": txn_id}):
             frappe.log_error(
                 "Duplicate Check", f"Payment Entry already exists for txn_id: {txn_id}"
