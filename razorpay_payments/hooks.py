@@ -4,6 +4,7 @@ app_publisher = "Mohammed Zeeshan"
 app_description = "razorpay payments link"
 app_email = "mohammadzeeshanpatel@4csolutions.in"
 app_license = "mit"
+required_apps = ["payments"]
 
 # Apps
 # ------------------
@@ -260,7 +261,7 @@ fixtures = [
             ["name", "in", [
                 "Sales Invoice-custom_razorpay_payment_link_id",
                 "Sales Invoice-custom_razorpay_payment_link_url",
-                "Sales Invoice-custom_payment_mobile_number"
+                "Sales Invoice-custom_payment_mobile_no"
             ]]
         ]
     }
