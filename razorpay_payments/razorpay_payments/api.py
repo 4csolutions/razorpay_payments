@@ -55,35 +55,35 @@ def send_payment_link_on_invoice_submit(doc, method):
     headers = get_razorpay_headers()
 
     # Improved reliability: Retry on connection errors
-    for attempt in range(3):
-        try:
-            response = requests.post(
-                url, headers=headers, data=json.dumps(payload), timeout=8
+    # for attempt in range(3):
+    try:
+        response = requests.post(
+            url, headers=headers, data=json.dumps(payload), timeout=8
+        )
+        if response.status_code == 200:
+            link = response.json()
+            frappe.db.set_value(
+                "Sales Invoice",
+                doc.name,
+                {
+                    "custom_razorpay_payment_link_id": link.get("id"),
+                    "custom_razorpay_payment_link_url": link.get("short_url"),
+                },
+                update_modified=False,
             )
-            if response.status_code == 200:
-                link = response.json()
-                frappe.db.set_value(
-                    "Sales Invoice",
-                    doc.name,
-                    {
-                        "custom_razorpay_payment_link_id": link.get("id"),
-                        "custom_razorpay_payment_link_url": link.get("short_url"),
-                    },
-                    update_modified=False,
-                )
 
-                frappe.msgprint(f"✅ Payment link sent to: {invoice_phone}", alert=True)
-                return
-            else:
-                frappe.log_error(
-                    "Payment Link Creation", f"Razorpay error: {response.text}"
-                )
-                # For transient errors, retry; for validation/auth errors, break early
-                if response.status_code not in [429, 500, 502, 503, 504]:
-                    break
-        except Exception as e:
-            frappe.log_error("Payment Link Creation", f"Razorpay error: {e}")
-    frappe.throw("Failed to send payment link after retries.")
+            frappe.msgprint(f"✅ Payment link sent to: {invoice_phone}", alert=True)
+            return
+        else:
+            frappe.log_error(
+                "Payment Link Creation", f"Razorpay error: {response.text}"
+            )
+            # For transient errors, retry; for validation/auth errors, break early
+            # if response.status_code not in [429, 500, 502, 503, 504]:
+                # break
+    except Exception as e:
+        frappe.log_error("Payment Link Creation", f"Razorpay error: {e}")
+    # frappe.throw("Failed to send payment link after retries.")
 
 
 @frappe.whitelist()
@@ -114,6 +114,7 @@ def razorpay_webhook():
     try:
         data = frappe.request.data
         payload = json.loads(data.decode("utf-8"))
+        frappe.log_error("Webhook Payload", json.dumps(payload))
 
         signature = frappe.get_request_header("X-Razorpay-Signature")
         webhook_secret = get_webhook_secret()
@@ -138,7 +139,7 @@ def razorpay_webhook():
             return "Event not handled"
 
         payment_data = payload.get("payload", {})
-        payment = payment_data.get("payment", {})
+        payment = payment_data.get("payment", {}).get("entity", {})
         payment_link = payment_data.get("payment_link", {})
         invoice_name = payment_link.get("entity", {}).get("reference_id")
         if not invoice_name:
