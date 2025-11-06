@@ -262,7 +262,8 @@ fixtures = [
                 "Sales Invoice-custom_razorpay_payment_link_details",
                 "Sales Invoice-custom_razorpay_payment_link_id",
                 "Sales Invoice-custom_razorpay_payment_link_url",
-                "Sales Invoice-custom_payment_mobile_no"
+                "Sales Invoice-custom_payment_mobile_no",
+                "Sales Invoice-custom_send_razorpay_payment_link"
             ]]
         ]
     }

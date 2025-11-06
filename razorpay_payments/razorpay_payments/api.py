@@ -23,8 +23,7 @@ def get_webhook_secret():
 
 @frappe.whitelist()
 def send_payment_link_on_invoice_submit(doc, method):
-    settings = frappe.get_single("Razorpay Settings")
-    if not settings.enable_payment_links:
+    if not doc.custom_send_razorpay_payment_link or not frappe.get_value("Razorpay Settings", "enable_payment_links"):
         return
 
     customer = frappe.get_doc("Customer", doc.customer)
@@ -78,12 +77,8 @@ def send_payment_link_on_invoice_submit(doc, method):
             frappe.log_error(
                 "Payment Link Creation", f"Razorpay error: {response.text}"
             )
-            # For transient errors, retry; for validation/auth errors, break early
-            # if response.status_code not in [429, 500, 502, 503, 504]:
-                # break
     except Exception as e:
         frappe.log_error("Payment Link Creation", f"Razorpay error: {e}")
-    # frappe.throw("Failed to send payment link after retries.")
 
 
 @frappe.whitelist()
