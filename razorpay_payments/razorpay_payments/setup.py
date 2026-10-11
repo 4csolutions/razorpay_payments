@@ -8,9 +8,8 @@ def setup_razorpay():
     """
 
     try:
-        default_company = get_default_company() or frappe.get_all("Company", limit=1)[0].name
-        if not default_company:
-            return
+        companies = frappe.get_all("Company", limit=1)
+        default_company = get_default_company() or (companies[0].name if companies else None)
 
         custom_fields = {
             "Razorpay Settings": [
@@ -45,17 +44,19 @@ def setup_razorpay():
             "payment_account"
         )
 
-        if not frappe.db.exists("Mode of Payment", "Razorpay"):
-            frappe.get_doc({
+        if default_company and not frappe.db.exists("Mode of Payment", "Razorpay"):
+            doc_data = {
                 "doctype": "Mode of Payment",
                 "mode_of_payment": "Razorpay",
                 "enabled": 1,
                 "type": "Bank",
-                "Mode of Payment Account": [{
+            }
+            if default_company:
+                doc_data["Mode of Payment Account"] = [{
                     "company": default_company,
                     "default_account": razorpay_account
                 }]
-            }).insert(ignore_permissions=True)
+            frappe.get_doc(doc_data).insert(ignore_permissions=True)
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Setup Failed ❌")
